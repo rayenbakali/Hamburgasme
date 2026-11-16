@@ -556,6 +556,7 @@ function tick() {
   rim.position.set(g.position.x - 4.5, g.position.y + 2, -3.5);
   rim2.position.set(g.position.x + 4, g.position.y - 1, -2);
 
+  burger.steamT = reduced ? 0 : activeId === 'melt' ? 1 : activeId === 'hero' || activeId === 'finale' ? 0.55 : 0;
   burger.update(dt, { explode: cur.ex, melt: cur.melt });
   updateSeeds(dt);
   updateLabels(cur.ex);
@@ -628,4 +629,4 @@ async function intro() {
     .add(() => document.querySelector('.preloader').remove());
 }
 intro();
-if (import.meta.env.DEV) window.__lenis = lenis;
+if (import.meta.env.DEV) Object.assign(window, { __lenis: lenis, __burger: burger, __THREE: THREE });

@@ -6,7 +6,7 @@
 //   3. light behaviour        — clearcoat egg-wash, fake subsurface glow on cheese/leaves/tomato
 import * as THREE from 'three';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
-import { surface } from './surface.js';
+import { surface, bakeNoise } from './surface.js';
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -132,7 +132,7 @@ const CRUMB = /* glsl */ `
 
 /* ---------------------------------------------------------- layers */
 
-function topBun() {
+function topBun(uContact) {
   const r = 1.45, h = 0.95, b = 0.1;
   const pts = [[0, 0], [r * 0.55, 0], [r * 0.9, 0.012], [r * 0.985, 0.045], [r, b]];
   for (let i = 1; i <= 18; i++) {
@@ -151,7 +151,7 @@ function topBun() {
 
   const mat = surface(
     new THREE.MeshPhysicalMaterial({
-      roughness: 0.48, clearcoat: 0.55, clearcoatRoughness: 0.3,
+      roughness: 0.5, clearcoat: 0.85, clearcoatRoughness: 0.22,
       sheen: 0.35, sheenRoughness: 0.5, sheenColor: new THREE.Color('#ffcf94'),
     }),
     /* glsl */ `
@@ -168,16 +168,29 @@ function topBun() {
       c *= 1.0 - pits * 0.14;
       pH = mf * 0.006 + snoise(P * 32.0) * 0.0018 - pits * 0.0025;
       pR = 0.85 + m * 0.35 + pits * 0.6;
+      // egg-wash is brushed on by hand: glossy in patches, dull in others
+      pC = smoothstep(-0.35, 0.3, m + fbm(P * 4.5) * 0.4);
+      pCR = 0.6 + (1.0 - pC) * 1.5;
+      // oven-spring: the pale, matte, torn band where the dough burst up in the oven
+      float tear = fbm(P * vec3(6.0, 2.0, 6.0)) * 0.05;
+      float band = smoothstep(0.075, 0.1, P.y) * (1.0 - smoothstep(0.17 + tear, 0.21 + tear, P.y));
+      c = mix(c, srgb(0.97, 0.82, 0.58) * (0.92 + mf * 0.1), band * 0.85);
+      pH += band * fbm(P * vec3(30.0, 60.0, 30.0)) * 0.006;
+      pR = mix(pR, 1.4, band);
+      pC *= 1.0 - band;
+      // sits on the fillings: darker where it meets them
+      pAO = mix(1.0, 0.45 + 0.55 * smoothstep(0.0, 0.11, P.y), uContact);
       if (P.y < 0.02) {
         ${CRUMB}
         float toast = smoothstep(1.05, 1.43, r);
         c = mix(srgb(0.97, 0.88, 0.69), srgb(0.80, 0.52, 0.24), toast) * (1.0 - holes * 0.28 - small * 0.15);
         pH = -holes * 0.012 - small * 0.004 + fbm(P * 30.0) * 0.003;
         pR = 2.0;
+        pC = 0.0;
       }
       diffuseColor.rgb = c;
     `,
-    { bump: 1.2 }
+    { bump: 1.2, uniforms: { uContact } }
   );
   const mesh = new THREE.Mesh(geo, mat);
 
@@ -214,7 +227,7 @@ function topBun() {
   return { obj: g, meshes: [mesh, seeds] };
 }
 
-function bottomBun() {
+function bottomBun(uContact) {
   const r = 1.4, h = 0.42;
   const geo = finalize(
     lathe([[0, 0], [r * 0.7, 0], [r * 0.95, 0.03], [r, 0.14], [r * 0.99, 0.3], [r * 0.95, 0.395], [r * 0.82, h], [0, h]], 144, 100),
@@ -246,10 +259,12 @@ function bottomBun() {
         c *= 0.9 + mf * 0.14;
         pH = mf * 0.005 + snoise(P * 40.0) * 0.0014;
         pR = 1.0 + m * 0.3;
+        pC = smoothstep(-0.2, 0.4, m);
       }
+      pAO = mix(1.0, 1.0 - 0.6 * smoothstep(0.22, 0.42, P.y), uContact);
       diffuseColor.rgb = c;
     `,
-    { bump: 1.2 }
+    { bump: 1.2, uniforms: { uContact } }
   );
   const mesh = new THREE.Mesh(geo, mat);
   return { obj: mesh, meshes: [mesh] };
@@ -267,7 +282,8 @@ function patty(mat, seed) {
         const k = 1 + (fbm(v.x * 1.4 + seed, v.y * 0.6, v.z * 1.4, 4) * 0.07 + fbm(v.x * 6, v.y * 4, v.z * 6 + seed, 3) * 0.035) * e * e;
         v.x *= k; v.z *= k;
       }
-      v.y += fbm(v.x * 2.5, v.y * 2, v.z * 2.5 + seed, 4) * 0.035 * (v.y > h * 0.5 ? 1 : 0.4);
+      const n = Math.max(0, fbm(v.x * 2.5, v.y * 2, v.z * 2.5 + seed, 4) + 0.55);
+      v.y += v.y > h * 0.5 ? -n * 0.032 : n * 0.012;
     }
   );
   const mesh = new THREE.Mesh(geo, mat);
@@ -275,9 +291,9 @@ function patty(mat, seed) {
   return { obj: mesh, meshes: [mesh] };
 }
 
-function pattyMaterial(uChicken) {
+function pattyMaterial(uChicken, uContact) {
   return surface(
-    new THREE.MeshPhysicalMaterial({ roughness: 0.72, clearcoat: 0.08, clearcoatRoughness: 0.6 }),
+    new THREE.MeshPhysicalMaterial({ roughness: 0.72, clearcoat: 1, clearcoatRoughness: 0.12 }),
     /* glsl */ `
       float cr = clamp((ridged(P * 5.5 + fbm(P * 2.0) * 0.8) * 0.75 + (fbm(P * 13.0) * 0.5 + 0.5) * 0.25 - 0.45) * 1.8 + 0.45, 0.0, 1.0);
       float fine = fbm(P * 24.0);
@@ -295,10 +311,74 @@ function pattyMaterial(uChicken) {
       pH = cr * mix(0.022, 0.035, uChicken) + fine * 0.007;
       float fat = smoothstep(0.55, 0.9, snoise(P * 6.5 + 3.0));
       pR = mix(1.2, 0.6, fat * (1.0 - uChicken * 0.8));
+      // juices: a thin wet film only on fat pockets and in the crevices
+      float wet = max(fat, smoothstep(0.35, 0.1, cr) * 0.6) * (1.0 - uChicken * 0.85);
+      pC = wet * 0.7;
+      pCR = 1.0 + (1.0 - wet) * 2.0;
+      // cracked black pepper
+      float pep = smoothstep(0.62, 0.72, snoise(P * 75.0 + 40.0)) * (1.0 - uChicken);
+      diffuseColor.rgb *= 1.0 - pep * 0.75;
+      // contact with whatever sits above and below
+      float side = smoothstep(1.1, 1.4, r);
+      float ao = 1.0 - 0.55 * (1.0 - smoothstep(0.0, 0.09, P.y)) - 0.4 * smoothstep(0.2, 0.31, P.y) * side;
+      pAO = mix(1.0, ao, uContact);
     `,
-    { bump: 2, uniforms: { uChicken } }
+    { bump: 2, uniforms: { uChicken, uContact } }
   );
 }
+
+/* What a cheese slice rests on. Built from the patty's actual vertices:
+   top(a, d) = surface height at angle a / distance d (relative to the layer's top plane, ≤ 0)
+   edge(a)   = outermost radius of the patty at angle a (over all heights)
+   The cheese drapes on top() and hangs just outside edge(), so it can never cut into the meat. */
+const SA = 128, SR = 64, SMAX = 1.9;
+function pattySupport(mesh, h) {
+  const top = new Float32Array(SA * SR).fill(NaN), edge = new Float32Array(SA);
+  const p = mesh.geometry.attributes.position;
+  const c = Math.cos(mesh.rotation.y), sn = Math.sin(mesh.rotation.y);
+  for (let i = 0; i < p.count; i++) {
+    const lx = p.getX(i), y = p.getY(i), lz = p.getZ(i);
+    const x = lx * c + lz * sn, z = -lx * sn + lz * c; // into the layer frame
+    const r = Math.hypot(x, z);
+    const ai = (Math.round(((Math.atan2(z, x) / TAU + 1) % 1) * SA)) % SA;
+    const ri = Math.min(SR - 1, Math.round((r / SMAX) * (SR - 1)));
+    const k = ai * SR + ri;
+    if (!(top[k] >= y)) top[k] = y;
+    if (r > edge[ai]) edge[ai] = r;
+  }
+  // fill radial gaps inward→outward, then dilate one bin each way (conservative)
+  for (let a = 0; a < SA; a++) {
+    let last = h;
+    for (let r = 0; r < SR; r++) { const k = a * SR + r; if (isNaN(top[k])) top[k] = last; else last = top[k]; }
+  }
+  const dil = new Float32Array(SA * SR), e2 = new Float32Array(SA);
+  for (let a = 0; a < SA; a++) {
+    e2[a] = Math.max(edge[(a + SA - 1) % SA], edge[a], edge[(a + 1) % SA]);
+    for (let r = 0; r < SR; r++) {
+      let m = -Infinity;
+      for (let da = -1; da <= 1; da++) for (let dr = -1; dr <= 1; dr++) {
+        const rr = Math.min(SR - 1, Math.max(0, r + dr));
+        m = Math.max(m, top[((a + da + SA) % SA) * SR + rr]);
+      }
+      dil[a * SR + r] = m - h;
+    }
+  }
+  const af = (a) => ((a / TAU) % 1 + 1) % 1 * SA;
+  return {
+    edge(a) {
+      const f = af(a), i = Math.floor(f) % SA, t = f - Math.floor(f);
+      return e2[i] + (e2[(i + 1) % SA] - e2[i]) * t;
+    },
+    top(a, d) {
+      const f = af(a), i = Math.floor(f) % SA, t = f - Math.floor(f);
+      const g = Math.min(SR - 1.001, (d / SMAX) * (SR - 1)), j = Math.floor(g), u = g - j;
+      const v = (ai) => dil[ai * SR + j] + (dil[ai * SR + j + 1] - dil[ai * SR + j]) * u;
+      return v(i) + (v((i + 1) % SA) - v(i)) * t;
+    },
+  };
+}
+// bottom bun's crumb face sits ~0.02 above its layer height, plus up to ~0.008 of torn-crumb relief
+const bunSupport = { edge: () => 1.45, top: () => 0.03 };
 
 class Cheese {
   constructor(seed, uMelt) {
@@ -329,42 +409,49 @@ class Cheese {
         pH = m * 0.005 + snoise(P * 22.0) * 0.0008;
         pR = 1.0 - uMelt * 0.4;
         pE = c * (0.05 + uMelt * 0.05); // light scattering through the slice
+        pC = 0.5 + uMelt * 0.5;
+        pCR = 1.0 - uMelt * 0.5;
       `,
       { bump: 1, oct: 3, uniforms: { uMelt } }
     );
     this.mesh = new THREE.Mesh(geo, this.mat);
-    this.mesh.position.y = 0.012;
+    this.mesh.position.y = 0;
     this.last = -1;
-    this.update(0);
   }
-  update(melt) {
-    if (Math.abs(melt - this.last) < 0.002) return;
-    this.last = melt;
+  // support: what's underneath; lift: extra clearance when stacked on another slice
+  update(melt, support, lift = 0) {
+    if (Math.abs(melt - this.last) < 0.002 && support === this.support && lift === this.lift) return;
+    this.last = melt; this.support = support; this.lift = lift;
     const p = this.geo.attributes.position.array, b = this.base;
+    const gap = 0.009 + lift; // clearance above the meat
     for (let i = 0; i < p.length; i += 3) {
       const x = b[i], z = b[i + 2];
       const d = Math.hypot(x, z);
-      // drape: past the patty rim the slice stops travelling outward and folds down,
-      // like cloth over a table edge; melt lengthens the folds and the drips
-      const rim = 1.4;
-      const over = Math.max(0, d - rim);
-      let drop = over * (0.75 + melt * 0.35);
-      if (over > 0) {
-        const a = Math.atan2(z, x);
+      const a = Math.atan2(z, x);
+      const R = support.edge(a);
+      const over = Math.max(0, d - R);
+      let y, rad;
+      if (over <= 0) {
+        // resting on the meat: follow its real surface (crust dips, rounded shoulder)
+        y = support.top(a, d) + gap;
+        rad = d;
+      } else {
+        // past the outermost edge: hang straight down just outside it, like cloth;
+        // melt lengthens the fold and grows the drips
+        let drop = over * (0.85 + melt * 0.35);
         let drip = 0;
         for (const dr of this.drips) {
           const da = Math.abs(((((a - dr.a + Math.PI) % TAU) + TAU) % TAU) - Math.PI);
           drip += Math.exp(-(da * da) / (dr.w * dr.w)) * dr.len;
         }
         drop += melt * drip * Math.min(1, over * 5);
+        const sh = Math.min(1, over / 0.06); // quick roll over the lip
+        y = support.top(a, R) + gap - drop;
+        rad = R + gap + 0.012 * sh + over * 0.03;
       }
-      // the slice settles onto the uneven patty top
-      const settle = vnoise(x * 2 + this.seed, 0, z * 2) * 0.012 * (d < rim ? 1 : 0);
-      // round the patty's shoulder (r≈1.4 → 1.6) then hang straight down
-      const sh = Math.min(1, over / 0.16);
-      const k = d > 1e-4 ? (Math.min(d, rim) + 0.2 * (1 - (1 - sh) * (1 - sh)) + over * 0.06) / d : 1;
+      const k = d > 1e-4 ? rad / d : 1;
       p[i] = x * k;
-      p[i + 1] = -drop * (0.35 + 0.65 * sh) + settle;
+      p[i + 1] = y;
       p[i + 2] = z * k;
     }
     this.geo.attributes.position.needsUpdate = true;
@@ -573,6 +660,62 @@ function contactShadow() {
   return m;
 }
 
+/* ---------------------------------------------------------- steam */
+// A few camera-facing planes; the wisps are the baked 3D noise scrolled upward,
+// domain-warped, and masked into a column that widens as it rises.
+class Steam {
+  constructor() {
+    this.group = new THREE.Group();
+    this.alpha = 0;
+    this.uTime = { value: 0 };
+    this.uAlpha = { value: 0 };
+    const geo = new THREE.PlaneGeometry(1.5, 2.6);
+    geo.translate(0, 1.3, 0);
+    const q = new THREE.Quaternion();
+    this.planes = [[-0.55, 0.1, 1.3], [0.15, -0.2, 7.7], [0.7, 0.15, 13.1]].map(([x, z, seed]) => {
+      const mat = new THREE.ShaderMaterial({
+        transparent: true, depthWrite: false,
+        uniforms: { uNoise: { value: bakeNoise() }, uTime: this.uTime, uAlpha: this.uAlpha, uSeed: { value: seed } },
+        vertexShader: /* glsl */ `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+        fragmentShader: /* glsl */ `
+          precision highp sampler3D;
+          uniform sampler3D uNoise; uniform float uTime, uAlpha, uSeed; varying vec2 vUv;
+          float n(vec3 p){ return texture(uNoise, p * 0.0625).r; }
+          void main(){
+            vec2 uv = vUv;
+            float t = uTime;
+            float cx = 0.5 + n(vec3(uv.y * 1.2 - t * 0.18, uSeed, 2.0)) * 0.35;
+            float w = 0.1 + uv.y * 0.22;
+            float col = exp(-pow((uv.x - cx) / w, 2.0) * 1.6);
+            vec3 q = vec3(uv.x * 2.2, uv.y * 1.6 - t * 0.32, t * 0.07 + uSeed);
+            float warp = n(q * 1.3);
+            float d = n((q + vec3(warp * 1.4, warp * 0.6, 0.0)) * 2.6) * 0.5 + 0.5;
+            float a = smoothstep(0.42, 0.8, d) * col * smoothstep(0.02, 0.22, uv.y) * (1.0 - smoothstep(0.45, 1.0, uv.y));
+            gl_FragColor = vec4(vec3(1.0, 0.97, 0.92), a * uAlpha);
+          }`,
+      });
+      const m = new THREE.Mesh(geo, mat);
+      m.position.set(x, 0, z);
+      m.renderOrder = 2;
+      m.frustumCulled = false;
+      // billboard: cancel the burger's rotation and face the camera
+      m.onBeforeRender = (r, sc, cam) => {
+        m.parent.getWorldQuaternion(q).invert();
+        m.quaternion.copy(q).multiply(cam.quaternion);
+      };
+      this.group.add(m);
+      return m;
+    });
+  }
+  update(dt, height, target) {
+    this.uTime.value += dt;
+    this.alpha += (target - this.alpha) * (1 - Math.exp(-3 * dt));
+    this.uAlpha.value = this.alpha * 0.32;
+    this.group.visible = this.alpha > 0.01;
+    this.group.position.y = height / 2 - 0.35;
+  }
+}
+
 /* ---------------------------------------------------------- the burger */
 
 export class Burger {
@@ -583,7 +726,8 @@ export class Burger {
 
     this.uChicken = { value: 0 };
     this.uMelt = { value: 0 };
-    this.pattyMat = pattyMaterial(this.uChicken);
+    this.uContact = { value: 1 }; // 1 = stacked (layers touch), 0 = exploded
+    this.pattyMat = pattyMaterial(this.uChicken, this.uContact);
     this.sauceBase = new THREE.Color('#d8361f');
     this.sauceHot = new THREE.Color('#a8100a');
     this.sauceMat = surface(
@@ -592,16 +736,17 @@ export class Burger {
       { oct: 3 }
     );
     this.cheeses = [];
+    this.supports = { bunBottom: bunSupport };
 
     const build = {
-      bunBottom: bottomBun,
-      patty: () => patty(this.pattyMat, 0.3),
-      patty2: () => patty(this.pattyMat, 2.1),
-      cheese: () => { const c = new Cheese(1, this.uMelt); this.cheeses.push(c); return { obj: c.mesh, meshes: [c.mesh] }; },
-      cheese2: () => { const c = new Cheese(2, this.uMelt); this.cheeses.push(c); return { obj: c.mesh, meshes: [c.mesh] }; },
+      bunBottom: () => bottomBun(this.uContact),
+      patty: () => { const o = patty(this.pattyMat, 0.3); this.supports.patty = pattySupport(o.obj, 0.3); return o; },
+      patty2: () => { const o = patty(this.pattyMat, 2.1); this.supports.patty2 = pattySupport(o.obj, 0.3); return o; },
+      cheese: () => { const c = new Cheese(1, this.uMelt); c.key = 'cheese'; this.cheeses.push(c); return { obj: c.mesh, meshes: [c.mesh] }; },
+      cheese2: () => { const c = new Cheese(2, this.uMelt); c.key = 'cheese2'; this.cheeses.push(c); return { obj: c.mesh, meshes: [c.mesh] }; },
       pickles, lettuce, tomato, onion,
       sauce: () => sauce(this.sauceMat),
-      bunTop: topBun,
+      bunTop: () => topBun(this.uContact),
     };
 
     this.layers = LAYER_DEFS.map((d, i) => {
@@ -617,6 +762,9 @@ export class Burger {
 
     this.shadow = contactShadow();
     this.group.add(this.shadow);
+    this.steam = new Steam();
+    this.steamT = 0.6;
+    this.group.add(this.steam.group);
 
     this.height = 0;
     this.chicken = 0; this.chickenT = 0;
@@ -662,8 +810,21 @@ export class Burger {
     this.shadow.position.y = -y / 2 - 0.03;
     this.shadow.material.opacity = 0.55 * (1 - explode * 0.7);
 
-    for (const c of this.cheeses) c.update(melt);
+    // each slice drapes over whatever is actually under it right now
+    for (const c of this.cheeses) {
+      let i = this.layers.findIndex((l) => l.key === c.key), lift = 0, sup = bunSupport;
+      while (--i >= 0) {
+        const l = this.layers[i];
+        if (!l.on) continue;
+        if (l.key.startsWith('cheese')) { lift += 0.014; continue; }
+        sup = this.supports[l.key] || bunSupport;
+        break;
+      }
+      c.update(melt, sup, lift);
+    }
     this.uMelt.value = melt;
+    this.uContact.value = 1 - Math.min(1, explode * 2.5);
+    this.steam.update(dt, this.height, this.steamT * (1 - explode));
     const k = 1 - Math.exp(-6 * dt);
     this.chicken += (this.chickenT - this.chicken) * k;
     this.spicy += (this.spicyT - this.spicy) * k;

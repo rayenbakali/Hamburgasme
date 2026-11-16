@@ -6,6 +6,8 @@
 //   pR                roughness multiplier
 //   pH                height -> turned into a bump normal via screen-space derivatives
 //   pE                emissive add (cheap fake subsurface glow)
+//   pC / pCR          clearcoat amount / roughness multipliers (patchy egg-wash, wet fat glints)
+//   pAO               ambient occlusion (contact darkening where layers touch)
 // It can read P (object position) plus the helpers below.
 import * as THREE from 'three';
 
@@ -54,7 +56,7 @@ vec3 _bump(vec3 surf_pos, vec3 surf_norm, vec2 dHdxy, float faceDirection){
 /* Tiling 3D gradient (Perlin) noise baked into a half-float 3D texture, once.
    Half-float keeps bump maps smooth (8-bit would terrace); values are in ~[-1, 1]. */
 let noiseTex = null;
-function bakeNoise() {
+export function bakeNoise() {
   if (noiseTex) return noiseTex;
   const N = mobile ? 64 : 96, P = 16; // texels per side, lattice period
   const perm = new Uint8Array(P * P * P);
@@ -128,12 +130,28 @@ export function surface(mat, glsl, o = {}) {
       .replace('#include <common>', `#include <common>\n#define OCT ${oct}\n${decl}\n${NOISE}`)
       .replace(
         '#include <color_fragment>',
-        `#include <color_fragment>\nvec3 P = vOPos; float pH = 0.0; float pR = 1.0; vec3 pE = vec3(0.0);\n{\n${glsl}\n}`
+        `#include <color_fragment>\nvec3 P = vOPos; float pH = 0.0; float pR = 1.0; vec3 pE = vec3(0.0); float pC = 1.0; float pCR = 1.0; float pAO = 1.0;\n{\n${glsl}\n}`
       )
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = clamp(roughnessFactor * pR, 0.04, 1.0);')
       .replace(
         '#include <normal_fragment_maps>',
         `#include <normal_fragment_maps>\nnormal = _bump(-vViewPosition, normal, vec2(dFdx(pH), dFdy(pH)) * ${bump}, faceDirection);`
+      )
+      .replace(
+        '#include <lights_physical_fragment>',
+        `#include <lights_physical_fragment>
+        #ifdef USE_CLEARCOAT
+          material.clearcoat = saturate(material.clearcoat * pC);
+          material.clearcoatRoughness = clamp(material.clearcoatRoughness * pCR, 0.0525, 1.0);
+        #endif`
+      )
+      .replace(
+        '#include <aomap_fragment>',
+        `#include <aomap_fragment>
+        reflectedLight.indirectDiffuse *= pAO;
+        reflectedLight.indirectSpecular *= pAO;
+        reflectedLight.directDiffuse *= mix(1.0, pAO, 0.65);
+        reflectedLight.directSpecular *= mix(1.0, pAO, 0.65);`
       )
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += pE;');
   };
