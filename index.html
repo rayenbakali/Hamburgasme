@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Hamburgasme — Le plaisir, couche par couche</title>
+  <meta name="description" content="Hamburgasme — smash burgers faits pour être mangés avec les mains. Le plaisir, couche par couche." />
+  <meta name="theme-color" content="#0a0a0a" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,300..800&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍔</text></svg>" />
+</head>
+<body data-theme="night">
+  <div class="preloader" aria-hidden="true">
+    <div class="pre-inner">
+      <span class="pre-word">Hambur<em>gasme</em></span>
+      <span class="pre-count"><span class="pre-num">0</span>%</span>
+    </div>
+    <p class="pre-note">You’ll be addicted !</p>
+  </div>
+
+  <canvas id="gl" aria-hidden="true"></canvas>
+  <div class="grain" aria-hidden="true"></div>
+  <div class="labels" aria-hidden="true"></div>
+  <div class="cursor" aria-hidden="true"><span class="cursor-ring"><span class="cursor-text"></span></span><span class="cursor-dot"></span></div>
+  <div class="progress" aria-hidden="true"><span></span></div>
+
+  <header class="nav">
+    <a class="logo" href="#hero" data-to><span class="wm-a">Hambur</span><span class="wm-b">gasme</span></a>
+    <nav class="nav-links" aria-label="Principale">
+      <a href="#anatomy" data-to>Anatomie</a>
+      <a href="#menu" data-to>La carte</a>
+      <a href="#builder" data-to>Composer</a>
+    </nav>
+    <a class="btn btn-sm" href="https://www.instagram.com/hamburgasme_officiel_/" target="_blank" rel="noopener">Commander</a>
+  </header>
+
+  <div class="indicator" aria-hidden="true">
+    <span class="ind-num">01</span><span class="ind-sep"></span><span class="ind-label">Le désir</span>
+  </div>
+
+  <main>
+    <section id="hero" data-theme="night" data-label="Le désir">
+      <div class="hero-top">
+        <p class="eyebrow reveal">Smash burgers — faits pour être mangés avec les mains.</p>
+        <p class="hero-hint reveal">Cliquez le burger.<br />Faites-le tourner.</p>
+      </div>
+      <h1 class="hero-title"><span class="ht wm-a">Hambur</span><span class="ht wm-b">gasme</span></h1>
+      <div class="hero-bottom">
+        <p class="hero-sub reveal">Le plaisir, couche par couche.<br /><em>You’ll be addicted !</em></p>
+        <div class="scroll-cue"><span>Scrollez pour le déshabiller</span><i></i></div>
+      </div>
+    </section>
+
+    <div class="marquee" aria-hidden="true">
+      <div class="marquee-inner">
+        <span>Hamburgasme <b>✺</b> Smash <b>✺</b> Cheddar fondu <b>✺</b> Brioche dorée <b>✺</b> Plaisir coupable <b>✺</b>&nbsp;</span>
+        <span>Hamburgasme <b>✺</b> Smash <b>✺</b> Cheddar fondu <b>✺</b> Brioche dorée <b>✺</b> Plaisir coupable <b>✺</b>&nbsp;</span>
+      </div>
+    </div>
+
+    <section id="manifesto" data-theme="night" data-label="Manifeste">
+      <div class="sticky">
+        <div class="manifesto-wrap">
+          <p class="kicker">( 02 — Manifeste )</p>
+          <p class="manifesto-text">On ne fait pas des burgers. On fabrique des <em>frissons</em>. Un pain brioché qui cède sous les doigts, un steak smashé qui crépite, un cheddar qui coule sans retenue. Chaque bouchée est une petite <em>perte de contrôle</em>.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="anatomy" data-theme="cream" data-label="Anatomie">
+      <div class="sticky">
+        <div class="anat-head">
+          <p class="kicker">( 03 — Anatomie )</p>
+          <h2 class="h2 reveal">L’anatomie<br />du <em>désir</em>.</h2>
+        </div>
+        <p class="anat-foot reveal">Neuf couches. Zéro compromis.<br />Continuez — on déshabille tout.</p>
+      </div>
+    </section>
+
+    <section id="melt" data-theme="ember" data-label="La fonte">
+      <div class="sticky">
+        <h2 class="giant melt-title" aria-label="Ça fond."><span>Ça</span><span>fond.</span></h2>
+        <div class="melt-foot">
+          <p class="melt-line reveal">Le cheddar ne fond pas.<br />Il <em>cède</em>.</p>
+          <div class="temp"><span class="temp-val">20°</span><span class="temp-lab">Température de la plaque</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="menu" data-theme="cheddar" data-label="La carte">
+      <div class="menu-track">
+        <div class="menu-intro">
+          <p class="kicker">( 05 — La carte )</p>
+          <h2 class="h2">Choisissez<br />votre <em>péché</em>.</h2>
+          <p class="menu-note">Le burger se transforme sous vos yeux →</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="builder" data-theme="night" data-label="Atelier">
+      <div class="builder-wrap">
+        <p class="kicker">( 06 — Atelier )</p>
+        <h2 class="h2 reveal">Compose<br />ton <em>extase</em>.</h2>
+        <p class="builder-sub">Ajoutez, retirez, empilez. Le burger obéit.</p>
+        <div class="chips" role="group" aria-label="Ingrédients"></div>
+        <div class="meter">
+          <div class="meter-row"><span class="meter-lab">Intensité</span><span class="meter-val">Gourmand</span></div>
+          <div class="meter-bar"><i></i></div>
+        </div>
+        <div class="builder-actions">
+          <button class="btn" type="button" data-act="explode">Tout lâcher</button>
+          <button class="btn btn-ghost" type="button" data-act="reset">Recommencer</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="finale" data-theme="ketchup" data-label="Le final">
+      <h2 class="giant finale-title"><span class="reveal">Faites-vous</span><em class="reveal">plaisir.</em></h2>
+      <div class="finale-grid">
+        <a class="btn btn-xl" href="https://www.instagram.com/hamburgasme_officiel_/" target="_blank" rel="noopener">Commander sur Instagram <span aria-hidden="true">↗</span></a>
+        <div class="spots">
+          <div class="info">
+            <span class="info-lab">Ariana</span>
+            <span class="info-place">Menzah 8</span>
+            <a href="tel:+21621013464">21 013 464</a>
+          </div>
+          <div class="info">
+            <span class="info-lab">La Marsa</span>
+            <span class="info-place">Rue Kabadou</span>
+            <a href="https://www.instagram.com/hamburgasme_officiel_/" target="_blank" rel="noopener">@hamburgasme_officiel_</a>
+          </div>
+        </div>
+      </div>
+      <footer class="footer">
+        <span>© 2026 Hamburgasme</span>
+        <span class="tagline">You’ll be addicted !</span>
+        <a href="#hero" data-to>Remonter ↑</a>
+      </footer>
+    </section>
+  </main>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

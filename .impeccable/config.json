@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "flat-type-hierarchy",
+        "value": "*",
+        "files": [
+          "index.html"
+        ],
+        "createdAt": "2026-11-16T20:03:33.045Z",
+        "reason": "Claude triage: index.html has no inline type sizes; src/style.css sets hero h1 at clamp(64px,17.5vw,330px), h2 up to 128px vs 15-18px body, a >5x step, verified in browser screenshots"
+      }
+    ]
+  }
+}
