@@ -141,12 +141,22 @@ function topBun(uContact) {
   }
   // dome surface, used for the bun and for seating the seeds
   const lumps = (x, y, z) => fbm(x * 1.6, y * 1.6, z * 1.6, 3) * 0.05;
+  const warp = (v) => {
+    const a = Math.atan2(v.z, v.x), t = Math.max(0, v.y) / (b + h);
+    const s = 1 + 0.028 * Math.sin(2 * a + 0.7) + 0.014 * Math.sin(3 * a + 2.1);
+    v.x *= s; v.z *= s;
+    // lopsided crown — expressed in x/z (not angle) so it stays smooth at the pole
+    const nx = v.x / r, nz = v.z / r;
+    v.y *= 1 + (0.05 * (nx * Math.cos(1.1) - nz * Math.sin(1.1)) + 0.02 * (nx * nx - nz * nz)) * t;
+  };
   const geo = finalize(lathe(pts, 144, 120), (v) => {
-    if (v.y < 0.03) return;
-    const k = lumps(v.x, v.y, v.z) * Math.min(1, (v.y - 0.03) * 6);
-    const nx = v.x / (r * r), ny = (v.y - b) / (h * h), nz = v.z / (r * r);
-    const l = Math.hypot(nx, ny, nz) || 1;
-    v.x += (nx / l) * k; v.y += (ny / l) * k; v.z += (nz / l) * k;
+    if (v.y >= 0.03) {
+      const k = lumps(v.x, v.y, v.z) * Math.min(1, (v.y - 0.03) * 6);
+      const nx = v.x / (r * r), ny = (v.y - b) / (h * h), nz = v.z / (r * r);
+      const l = Math.hypot(nx, ny, nz) || 1;
+      v.x += (nx / l) * k; v.y += (ny / l) * k; v.z += (nz / l) * k;
+    }
+    warp(v);
   });
 
   const mat = surface(
@@ -200,7 +210,7 @@ function topBun(uContact) {
   const sp = seedGeo.attributes.position;
   for (let i = 0; i < sp.count; i++) { const z = sp.getZ(i); sp.setX(i, sp.getX(i) * (1 - z * 4)); }
   seedGeo.computeVertexNormals();
-  const N = 190;
+  const N = 230;
   const seeds = new THREE.InstancedMesh(
     seedGeo,
     new THREE.MeshPhysicalMaterial({ roughness: 0.42, sheen: 0.6, sheenColor: new THREE.Color('#fff3d6'), clearcoat: 0.3 }),
@@ -209,18 +219,21 @@ function topBun(uContact) {
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), q2 = new THREE.Quaternion(), q3 = new THREE.Quaternion();
   const up = new THREE.Vector3(0, 1, 0), fwd = new THREE.Vector3(1, 0, 0), nrm = new THREE.Vector3(), pos = new THREE.Vector3(), sc = new THREE.Vector3();
   const col = new THREE.Color();
-  for (let i = 0; i < N; i++) {
-    const a = Math.asin(THREE.MathUtils.lerp(Math.sin(0.25), Math.sin(1.5), rand()));
+  for (let i = 0; i < N; ) {
+    const a = Math.asin(THREE.MathUtils.lerp(Math.sin(0.2), Math.sin(1.52), rand()));
     const th = rand() * TAU;
     pos.set(r * Math.cos(a) * Math.cos(th), b + h * Math.pow(Math.sin(a), 0.78), r * Math.cos(a) * Math.sin(th));
+    const patch = Math.pow(clamp(fbm(pos.x * 1.3, pos.y * 1.3, pos.z * 1.3 + 4, 3) + 0.55, 0, 1), 1.6);
+    if (rand() > 0.15 + patch * 0.85) continue; // rejection sampling -> clusters and bare spots
     nrm.set(pos.x / (r * r), (pos.y - b) / (h * h), pos.z / (r * r)).normalize();
-    pos.addScaledVector(nrm, lumps(pos.x, pos.y, pos.z) + 0.006);
+    pos.addScaledVector(nrm, lumps(pos.x, pos.y, pos.z) + 0.002);
+    warp(pos);
     q.setFromUnitVectors(up, nrm).multiply(q2.setFromAxisAngle(up, rand() * TAU)).multiply(q3.setFromAxisAngle(fwd, (rand() - 0.5) * 0.5));
     sc.setScalar(0.75 + rand() * 0.45);
     seeds.setMatrixAt(i, m.compose(pos, q, sc));
-    col.setHSL(0.11 + rand() * 0.02, 0.45 + rand() * 0.25, 0.8 + rand() * 0.12);
-    if (rand() < 0.12) col.offsetHSL(0, 0.1, -0.15); // a few toasted ones
-    seeds.setColorAt(i, col);
+    col.setHSL(0.1 + rand() * 0.025, 0.4 + rand() * 0.2, 0.74 + rand() * 0.1);
+    if (rand() < 0.15) col.offsetHSL(0, 0.12, -0.2); // a few toasted ones
+    seeds.setColorAt(i++, col);
   }
   const g = new THREE.Group();
   g.add(mesh, seeds);
@@ -279,7 +292,7 @@ function patty(mat, seed) {
       if (rr > 0.001) {
         // smashed patties have ragged, lacy edges
         const e = rr / r;
-        const k = 1 + (fbm(v.x * 1.4 + seed, v.y * 0.6, v.z * 1.4, 4) * 0.07 + fbm(v.x * 6, v.y * 4, v.z * 6 + seed, 3) * 0.035) * e * e;
+        const k = 1 + (fbm(v.x * 1.4 + seed, v.y * 0.6, v.z * 1.4, 4) * 0.07 + fbm(v.x * 6, v.y * 4, v.z * 6 + seed, 3) * 0.035 + fbm(v.x * 15, v.y * 9, v.z * 15 + seed, 2) * 0.03) * e * e * e;
         v.x *= k; v.z *= k;
       }
       const n = Math.max(0, fbm(v.x * 2.5, v.y * 2, v.z * 2.5 + seed, 4) + 0.55);
@@ -315,6 +328,12 @@ function pattyMaterial(uChicken, uContact) {
       float wet = max(fat, smoothstep(0.35, 0.1, cr) * 0.6) * (1.0 - uChicken * 0.85);
       pC = wet * 0.7;
       pCR = 1.0 + (1.0 - wet) * 2.0;
+      // ground-beef grain: fine strands + pale fat flecks (faded out at distance by _aa)
+      float grain = snoise(P * 58.0);
+      float fleck = smoothstep(0.4, 0.65, snoise(P * 34.0 + 5.0)) * (1.0 - uChicken);
+      diffuseColor.rgb *= 0.9 + grain * 0.14;
+      diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 1.7 + srgb(0.05, 0.025, 0.01), fleck * 0.3);
+      pH += grain * 0.0028 + fleck * 0.002;
       // cracked black pepper
       float pep = smoothstep(0.62, 0.72, snoise(P * 75.0 + 40.0)) * (1.0 - uChicken);
       diffuseColor.rgb *= 1.0 - pep * 0.75;
@@ -380,6 +399,8 @@ function pattySupport(mesh, h) {
 // bottom bun's crumb face sits ~0.02 above its layer height, plus up to ~0.008 of torn-crumb relief
 const bunSupport = { edge: () => 1.45, top: () => 0.03 };
 
+const THICK = 0.016; // a real slice is ~2 mm at burger scale
+
 class Cheese {
   constructor(seed, uMelt) {
     const geo = new THREE.PlaneGeometry(2.62, 2.62, 72, 72);
@@ -392,15 +413,44 @@ class Cheese {
       pp.setX(i, x * (1 - c)); pp.setZ(i, z * (1 - c));
     }
     geo.rotateY(Math.PI / 4 + seed * 0.45);
-    this.geo = geo;
+    // `sheet` is the draped underside; the visible mesh is a real slab built from it:
+    // top surface = underside pushed out along its normal by THICK, joined by an edge strip.
+    // Shared edge vertices get averaged normals -> the soft, rounded edge of a real slice.
+    this.sheet = geo;
     this.base = Float32Array.from(geo.attributes.position.array);
+    const V = (this.V = geo.attributes.position.count), S = 73;
+    const solid = new THREE.BufferGeometry();
+    solid.setAttribute('position', new THREE.BufferAttribute(new Float32Array(V * 6), 3));
+    const idx = [], si = geo.index.array;
+    for (let i = 0; i < si.length; i += 3) {
+      idx.push(si[i], si[i + 1], si[i + 2]);                     // top
+      idx.push(si[i] + V, si[i + 2] + V, si[i + 1] + V);         // bottom (flipped)
+    }
+    const loop = [];
+    for (let x = 0; x < S - 1; x++) loop.push(x);                         // row 0
+    for (let y = 0; y < S - 1; y++) loop.push(y * S + S - 1);             // right column
+    for (let x = S - 1; x > 0; x--) loop.push((S - 1) * S + x);           // last row
+    for (let y = S - 1; y > 0; y--) loop.push(y * S);                     // left column
+    // orient the edge strip outward (checked once on the flat slice)
+    const P0 = this.base, i0 = loop[0], i1 = loop[1];
+    const ex = P0[i1 * 3] - P0[i0 * 3], ez = P0[i1 * 3 + 2] - P0[i0 * 3 + 2];
+    // normal of tri (i, j, j+V) with top above bottom ~ (−ez, 0, ex) up to sign
+    const outward = (-ez) * P0[i0 * 3] + ex * P0[i0 * 3 + 2] > 0;
+    for (let k = 0; k < loop.length; k++) {
+      const i = loop[k], j = loop[(k + 1) % loop.length];
+      if (outward) idx.push(i, j + V, j, i, i + V, j + V);
+      else idx.push(i, j, j + V, i, j + V, i + V);
+    }
+    solid.setIndex(idx);
+    const geoSolid = solid;
+    this.geo = geoSolid;
     const r = rng(seed * 99 + 7);
     this.seed = seed;
     this.drips = Array.from({ length: 8 }, () => ({ a: r() * TAU, w: 0.05 + r() * 0.09, len: 0.2 + r() * 0.55 }));
     this.mat = surface(
       new THREE.MeshPhysicalMaterial({
         roughness: 0.4, clearcoat: 0.5, clearcoatRoughness: 0.25,
-        sheen: 0.3, sheenColor: new THREE.Color('#ffe7a6'), side: THREE.DoubleSide,
+        sheen: 0.3, sheenColor: new THREE.Color('#ffe7a6'),
       }),
       /* glsl */ `
         float m = fbm(P * 2.6);
@@ -422,8 +472,8 @@ class Cheese {
   update(melt, support, lift = 0) {
     if (Math.abs(melt - this.last) < 0.002 && support === this.support && lift === this.lift) return;
     this.last = melt; this.support = support; this.lift = lift;
-    const p = this.geo.attributes.position.array, b = this.base;
-    const gap = 0.009 + lift; // clearance above the meat
+    const p = this.sheet.attributes.position.array, b = this.base;
+    const gap = 0.009; // clearance above the meat
     for (let i = 0; i < p.length; i += 3) {
       const x = b[i], z = b[i + 2];
       const d = Math.hypot(x, z);
@@ -447,15 +497,22 @@ class Cheese {
         drop += melt * drip * Math.min(1, over * 5);
         const sh = Math.min(1, over / 0.06); // quick roll over the lip
         y = support.top(a, R) + gap - drop;
-        rad = R + gap + 0.012 * sh + over * 0.03;
+        rad = R + gap + lift + 0.012 * sh + over * 0.03;
       }
       const k = d > 1e-4 ? rad / d : 1;
       p[i] = x * k;
       p[i + 1] = y;
       p[i + 2] = z * k;
     }
+    this.sheet.computeVertexNormals();
+    const n = this.sheet.attributes.normal.array, o = this.geo.attributes.position.array, V3 = this.V * 3;
+    for (let i = 0; i < V3; i += 3) {
+      o[i] = p[i] + n[i] * THICK; o[i + 1] = p[i + 1] + n[i + 1] * THICK; o[i + 2] = p[i + 2] + n[i + 2] * THICK;
+      o[V3 + i] = p[i]; o[V3 + i + 1] = p[i + 1]; o[V3 + i + 2] = p[i + 2];
+    }
     this.geo.attributes.position.needsUpdate = true;
     this.geo.computeVertexNormals();
+    this.geo.computeBoundingSphere();
   }
 }
 
@@ -475,7 +532,8 @@ const lettuceMat = () =>
       diffuseColor.rgb = c;
       pH = vein * 0.007 + sub * 0.0025 + fbm(P * 15.0) * 0.005;
       pR = 1.0 - vein * 0.3;
-      pE = c * 0.09; // leaves glow when lit from behind
+      if (gl_FrontFacing) diffuseColor.rgb = mix(c, srgb(0.86, 0.92, 0.62), 0.45); // paler underside (disc winding: front = underside)
+      pE = diffuseColor.rgb * 0.09; // leaves glow when lit from behind
     `,
     { bump: 1, oct: 4 }
   );
@@ -535,27 +593,39 @@ const tomatoTex = () =>
 
 function tomato() {
   const tex = tomatoTex();
-  const fx = /* glsl */ `
-    pH = fbm(P * 12.0) * 0.004;
-    pR = 0.7 + fbm(P * 4.0) * 0.5;
-    pE = diffuseColor.rgb * 0.07; // juicy, translucent flesh
-  `;
-  const side = surface(new THREE.MeshPhysicalMaterial({ color: '#a8180c', roughness: 0.25, clearcoat: 1, clearcoatRoughness: 0.08 }), fx, { oct: 3 });
-  const cap = surface(new THREE.MeshPhysicalMaterial({ map: tex, roughness: 0.22, clearcoat: 0.9, clearcoatRoughness: 0.12 }), fx, { oct: 3 });
+  const mat = surface(
+    new THREE.MeshPhysicalMaterial({ map: tex, roughness: 0.24, clearcoat: 0.9, clearcoatRoughness: 0.14 }),
+    /* glsl */ `
+      pH = fbm(P * 12.0) * 0.004;
+      pR = 0.7 + fbm(P * 4.0) * 0.5;
+      pC = 0.55 + fbm(P * 3.0) * 0.6;   // wet in places, drier in others
+      diffuseColor.rgb *= 0.92 + fbm(P * 2.0) * 0.16;
+      pE = diffuseColor.rgb * 0.08;     // juicy, translucent flesh
+    `,
+    { oct: 3 }
+  );
   const g = new THREE.Group(), meshes = [];
   [[-0.42, 0.05, 0, 0.3, 0.95], [0.45, -0.08, 0.025, 1.7, 0.9]].forEach(([x, z, y, rot, R], k) => {
-    const geo = new THREE.CylinderGeometry(R, R, 0.1, 96, 1);
-    const p = geo.attributes.position;
+    const T = 0.1;
+    // rounded rim instead of a knife-sharp cylinder
+    const prof = [[0, 0], [R * 0.7, 0], [R - 0.035, 0.002], [R - 0.008, 0.016], [R, T * 0.5], [R - 0.008, T - 0.016], [R - 0.035, T - 0.002], [R * 0.7, T], [0, T]];
+    let geo = lathe(prof, 128, 60);
+    let uv = geo.attributes.uv, p = geo.attributes.position;
+    // planar mapping: the texture's skin ring (radius .47) lands exactly on the rim
+    for (let i = 0; i < p.count; i++) uv.setXY(i, 0.5 + (p.getX(i) / R) * 0.47, 0.5 + (p.getZ(i) / R) * 0.47);
+    geo.deleteAttribute('normal');
+    geo = mergeVertices(geo, 1e-4); // weld the lathe seam (UVs now match there)
+    p = geo.attributes.position;
     for (let i = 0; i < p.count; i++) {
       const vx = p.getX(i), vz = p.getZ(i), rr = Math.hypot(vx, vz);
       if (rr < 1e-3) continue;
       const a = Math.atan2(vz, vx);
-      const s = 1 + fbm(Math.cos(a) * 1.5 + k * 5, Math.sin(a) * 1.5, 0, 3) * 0.08;
-      p.setX(i, vx * s); p.setZ(i, vz * s);
+      const sc = 1 + fbm(Math.cos(a) * 1.5 + k * 5, Math.sin(a) * 1.5, 0, 3) * 0.08;
+      p.setX(i, vx * sc); p.setZ(i, vz * sc);
+      p.setY(i, p.getY(i) + fbm(vx * 1.5, k, vz * 1.5, 2) * 0.012); // not perfectly flat
     }
     geo.computeVertexNormals();
-    geo.translate(0, 0.05, 0);
-    const m = new THREE.Mesh(geo, [side, cap, cap]);
+    const m = new THREE.Mesh(geo, mat);
     m.position.set(x, y, z);
     m.rotation.set(0, rot, y ? 0.04 : -0.02);
     g.add(m); meshes.push(m);
@@ -637,7 +707,9 @@ function sauce(mat) {
     const ca = Math.cos(a), sa = Math.sin(a);
     const edge = 1.2 + fbm(ca * 1.5, sa * 1.5, 3, 3) * 0.35;
     const lobe = Math.max(0, fbm(ca * 2.5, sa * 2.5, 9, 2) + 0.2);
-    return { r: edge * t, y: 0.014 + fbm(ca * 3 * t, sa * 3 * t, 1, 2) * 0.01 - Math.pow(t, 4) * 0.07 * lobe };
+    // thicker bead along the rim, like a squeezed line of sauce
+    const bead = Math.exp(-Math.pow((t - 0.9) / 0.1, 2)) * 0.01;
+    return { r: edge * t, y: 0.014 + bead + fbm(ca * 3 * t, sa * 3 * t, 1, 2) * 0.01 - Math.pow(t, 4) * 0.07 * lobe };
   });
   const mesh = new THREE.Mesh(geo, mat);
   return { obj: mesh, meshes: [mesh] };
@@ -816,7 +888,7 @@ export class Burger {
       while (--i >= 0) {
         const l = this.layers[i];
         if (!l.on) continue;
-        if (l.key.startsWith('cheese')) { lift += 0.014; continue; }
+        if (l.key.startsWith('cheese')) { lift += THICK + 0.012; continue; }
         sup = this.supports[l.key] || bunSupport;
         break;
       }

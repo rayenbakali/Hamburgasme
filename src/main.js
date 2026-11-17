@@ -162,8 +162,23 @@ function adaptResolution(dt) {
 }
 renderer.setSize(innerWidth, innerHeight);
 // Khronos "PBR Neutral": keeps food colours true instead of ACES' orange push
-renderer.toneMapping = THREE.NeutralToneMapping;
-renderer.toneMappingExposure = 1.0;
+// Food-photography grade, applied inside the tone-mapping step (free: no extra pass).
+// Neutral base -> a touch more saturation -> gentle S-curve -> warm shadows.
+THREE.ShaderChunk.tonemapping_pars_fragment = THREE.ShaderChunk.tonemapping_pars_fragment.replace(
+  'vec3 CustomToneMapping( vec3 color ) { return color; }',
+  `vec3 CustomToneMapping( vec3 color ) {
+    vec3 c = NeutralToneMapping( color );
+    float l = dot( c, vec3( 0.2126, 0.7152, 0.0722 ) );
+    c = max( mix( vec3( l ), c, 1.1 ), 0.0 );
+    vec3 g = pow( c, vec3( 1.0 / 2.2 ) );
+    g = mix( g, g * g * ( 3.0 - 2.0 * g ), 0.22 );
+    c = pow( g, vec3( 2.2 ) );
+    c *= mix( vec3( 1.04, 0.99, 0.93 ), vec3( 1.0 ), smoothstep( 0.0, 0.35, l ) );
+    return c;
+  }`
+);
+renderer.toneMapping = THREE.CustomToneMapping;
+renderer.toneMappingExposure = 1.05;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
